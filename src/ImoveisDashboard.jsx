@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { SHEETS_API_URL, RADIUS_MIN_KM, RADIUS_MAX_KM, RADIUS_DEFAULT_KM } from './imoveis-config';
+import {
+  signInWithPopup,
+  GoogleAuthProvider,
+  OAuthProvider,
+} from 'firebase/auth';
+import { auth } from './firebase';
+import { SHEETS_API_URL, OTP_API_URL, RADIUS_MIN_KM, RADIUS_MAX_KM, RADIUS_DEFAULT_KM } from './imoveis-config';
 
 // ─── Fórmula de Haversine — distância real em km ────────────
 function distKm(lat1, lng1, lat2, lng2) {
@@ -212,21 +218,70 @@ function LandingScreen({ onContinue }) {
   );
 }
 
-// ─── TELA: AUTH ──────────────────────────────────────────────
+// ─── TELA: AUTH (Google + Apple ID via Firebase) ─────────────
 function AuthScreen({ onLogin }) {
   const [loading, setLoading] = useState(false);
-  const [prov, setProv] = useState('');
-  const handle = (p) => { setProv(p); setLoading(true); setTimeout(() => { setLoading(false); onLogin(p); }, 1800); };
+  const [loadingProvider, setLoadingProvider] = useState('');
+  const [error, setError] = useState('');
+
+  const errorMsg = (code) => {
+    const map = {
+      'auth/popup-closed-by-user':    'Login cancelado. Tente novamente.',
+      'auth/popup-blocked':           'Pop-up bloqueado pelo navegador. Permita pop-ups para este site.',
+      'auth/network-request-failed':  'Sem conexão. Verifique sua internet.',
+      'auth/cancelled-popup-request': 'Login cancelado.',
+      'auth/account-exists-with-different-credential': 'Este e-mail já está cadastrado com outro método de login.',
+    };
+    return map[code] || 'Ocorreu um erro. Tente novamente.';
+  };
+
+  const handleGoogle = async () => {
+    setLoadingProvider('google'); setLoading(true); setError('');
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const cred = await signInWithPopup(auth, provider);
+      onLogin({
+        name:  cred.user.displayName || cred.user.email.split('@')[0],
+        email: cred.user.email,
+        photo: cred.user.photoURL,
+      });
+    } catch (e) {
+      setError(errorMsg(e.code)); setLoading(false);
+    }
+  };
+
+  const handleApple = async () => {
+    setLoadingProvider('apple'); setLoading(true); setError('');
+    try {
+      const provider = new OAuthProvider('apple.com');
+      provider.addScope('email');
+      provider.addScope('name');
+      const cred = await signInWithPopup(auth, provider);
+      const name = cred.user.displayName || cred.user.email?.split('@')[0] || 'Usuário Apple';
+      onLogin({
+        name,
+        email: cred.user.email,
+        photo: cred.user.photoURL,
+      });
+    } catch (e) {
+      setError(errorMsg(e.code)); setLoading(false);
+    }
+  };
 
   return (
     <div style={S.card}>
       <StepBar current={0} />
       <div style={S.logo}>🔐</div>
-      <h1 style={S.title}>Entrar na conta</h1>
-      <p style={S.subtitle}>Escolha como deseja se identificar</p>
-      {loading ? <Spinner text={`Autenticando com ${prov === 'google' ? 'Google' : 'Apple'}...`} /> : (
+      <h1 style={S.title}>Identificação</h1>
+      <p style={S.subtitle}>Escolha como deseja entrar para buscar imóveis</p>
+
+      {loading ? (
+        <Spinner text={`Autenticando com ${loadingProvider === 'google' ? 'Google' : 'Apple'}...`} />
+      ) : (
         <>
-          <button style={S.btnGoogle} onClick={() => handle('google')}
+          {/* Google */}
+          <button style={S.btnGoogle} onClick={handleGoogle}
             onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.18)'}
             onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
             <svg width="20" height="20" viewBox="0 0 24 24">
@@ -237,33 +292,40 @@ function AuthScreen({ onLogin }) {
             </svg>
             Continuar com Google
           </button>
-          <button style={S.btnApple} onClick={() => handle('apple')}
+
+          {/* Apple */}
+          <button style={S.btnApple} onClick={handleApple}
             onMouseOver={e => e.currentTarget.style.background = '#e8e8e8'}
             onMouseOut={e => e.currentTarget.style.background = '#fff'}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="black">
               <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
             </svg>
-            Continuar com Apple
+            Continuar com Apple ID
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '0 0 16px', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>
-            <div style={S.dividerLine} />Seus dados estão protegidos<div style={S.dividerLine} />
+
+          {error && (
+            <div style={{ background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: '10px', padding: '12px', fontSize: '13px', color: '#ff9999', textAlign: 'center' }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '20px', color: 'rgba(255,255,255,0.2)', fontSize: '11px' }}>
+            <div style={S.dividerLine} />🔒 Seus dados são protegidos pelo Firebase<div style={S.dividerLine} />
           </div>
-          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
-            Ao continuar, você aceita nossos Termos de Uso e Política de Privacidade.
-          </p>
         </>
       )}
     </div>
   );
 }
 
-// ─── TELA: WHATSAPP VERIFY ───────────────────────────────────
+// ─── TELA: VERIFICAÇÃO SMS/WhatsApp via Twilio ───────────────
 function VerifyScreen({ onVerified }) {
-  const [step, setStep] = useState('phone');
+  const [step, setStep]   = useState('phone');
   const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
+  const [code, setCode]   = useState('');
   const [error, setError] = useState('');
 
+  // Formata exibição: (98) 99999-9999
   const fmt = v => {
     const d = v.replace(/\D/g, '').slice(0, 11);
     if (d.length <= 2) return d;
@@ -271,32 +333,58 @@ function VerifyScreen({ onVerified }) {
     return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
   };
 
-  const send = () => {
-    if (phone.replace(/\D/g, '').length < 10) { setError('Digite um número válido com DDD.'); return; }
+  // Converte (98) 99999-9999 → +5598999999999
+  const toE164 = v => '+55' + v.replace(/\D/g, '');
+
+  const send = async () => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) { setError('Digite um número válido com DDD.'); return; }
     setError(''); setStep('sending');
-    setTimeout(() => setStep('code'), 2000);
+    try {
+      const res  = await fetch(`${OTP_API_URL}/send-otp`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ phone: toE164(phone) }),
+      });
+      const data = await res.json();
+      if (data.success) { setStep('code'); return; }
+      throw new Error(data.error || 'Erro ao enviar código.');
+    } catch (e) {
+      setError(e.message); setStep('phone');
+    }
   };
 
-  const verify = () => {
+  const verify = async () => {
     if (code.length < 6) { setError('O código deve ter 6 dígitos.'); return; }
     setError(''); setStep('sending');
-    setTimeout(() => onVerified(phone), 1800);
+    try {
+      const res  = await fetch(`${OTP_API_URL}/verify-otp`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ phone: toE164(phone), code }),
+      });
+      const data = await res.json();
+      if (data.valid) { onVerified(phone); return; }
+      throw new Error('Código incorreto. Tente novamente.');
+    } catch (e) {
+      setError(e.message); setStep('code');
+    }
   };
 
   return (
     <div style={S.card}>
       <StepBar current={1} />
-      <div style={S.logo}>💬</div>
-      <h1 style={S.title}>Verificar via WhatsApp</h1>
-      <p style={S.subtitle}>Confirme sua identidade pelo WhatsApp</p>
-      {step === 'sending' && <Spinner text={code ? 'Verificando código...' : 'Enviando código...'} />}
+      <div style={S.logo}>📱</div>
+      <h1 style={S.title}>Verificar número</h1>
+      <p style={S.subtitle}>Confirme seu celular para continuar</p>
+      {step === 'sending' && <Spinner text={step === 'sending' && !code ? 'Enviando código SMS...' : 'Verificando código...'} />}
       {step === 'phone' && (
         <>
           <label style={S.label}>Seu número com DDD</label>
           <input style={S.input} type="tel" placeholder="(98) 99999-9999"
             value={phone} onChange={e => { setPhone(fmt(e.target.value)); setError(''); }} />
-          {error && <p style={{ color: '#ff6b6b', fontSize: '13px' }}>{error}</p>}
-          <button style={S.btnPrimary} onClick={send}>Enviar código pelo WhatsApp 📲</button>
+          {error && <p style={{ color: '#ff6b6b', fontSize: '13px', lineHeight: '1.5' }}>{error}</p>}
+          <button style={S.btnPrimary} onClick={send}>Enviar código SMS 📲</button>
         </>
       )}
       {step === 'code' && (
@@ -309,7 +397,8 @@ function VerifyScreen({ onVerified }) {
             value={code} onChange={e => { setCode(e.target.value.slice(0, 6)); setError(''); }} />
           {error && <p style={{ color: '#ff6b6b', fontSize: '13px' }}>{error}</p>}
           <button style={S.btnPrimary} onClick={verify}>Confirmar código ✓</button>
-          <button onClick={() => setStep('phone')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '13px', cursor: 'pointer', marginTop: '12px', width: '100%' }}>
+          <button onClick={() => { setStep('phone'); setCode(''); setError(''); }}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '13px', cursor: 'pointer', marginTop: '12px', width: '100%' }}>
             ← Alterar número
           </button>
         </>
@@ -543,7 +632,7 @@ export default function ImoveisDashboard() {
       `}</style>
       <div style={S.root}>
         {screen === SCREENS.LANDING   && <LandingScreen onContinue={() => setScreen(SCREENS.AUTH)} />}
-        {screen === SCREENS.AUTH      && <AuthScreen onLogin={p => { setUser({ name: p === 'google' ? 'Usuário Google' : 'Usuário Apple', provider: p }); setScreen(SCREENS.VERIFY); }} />}
+        {screen === SCREENS.AUTH      && <AuthScreen onLogin={u => { setUser(u); setScreen(SCREENS.VERIFY); }} />}
         {screen === SCREENS.VERIFY    && <VerifyScreen onVerified={phone => { setUser(u => ({ ...u, phone })); setScreen(SCREENS.DASHBOARD); }} />}
         {screen === SCREENS.DASHBOARD && <DashboardScreen user={user} />}
       </div>
