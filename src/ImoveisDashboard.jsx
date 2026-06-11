@@ -4,7 +4,8 @@ import {
   GoogleAuthProvider,
   OAuthProvider,
 } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { SHEETS_API_URL, OTP_API_URL, RADIUS_MIN_KM, RADIUS_MAX_KM, RADIUS_DEFAULT_KM } from './imoveis-config';
 
 // ─── Fórmula de Haversine — distância real em km ────────────
@@ -242,6 +243,7 @@ function AuthScreen({ onLogin }) {
       provider.setCustomParameters({ prompt: 'select_account' });
       const cred = await signInWithPopup(auth, provider);
       onLogin({
+        uid:   cred.user.uid,
         name:  cred.user.displayName || cred.user.email.split('@')[0],
         email: cred.user.email,
         photo: cred.user.photoURL,
@@ -260,6 +262,7 @@ function AuthScreen({ onLogin }) {
       const cred = await signInWithPopup(auth, provider);
       const name = cred.user.displayName || cred.user.email?.split('@')[0] || 'Usuário Apple';
       onLogin({
+        uid:   cred.user.uid,
         name,
         email: cred.user.email,
         photo: cred.user.photoURL,
@@ -376,21 +379,28 @@ function VerifyScreen({ onVerified }) {
       <StepBar current={1} />
       <div style={S.logo}>📱</div>
       <h1 style={S.title}>Verificar número</h1>
-      <p style={S.subtitle}>Confirme seu celular para continuar</p>
-      {step === 'sending' && <Spinner text={step === 'sending' && !code ? 'Enviando código SMS...' : 'Verificando código...'} />}
+      <p style={S.subtitle}>Vamos confirmar seu WhatsApp para continuar</p>
+      {step === 'sending' && <Spinner text={!code ? 'Enviando código pelo WhatsApp...' : 'Verificando código...'} />}
       {step === 'phone' && (
         <>
-          <label style={S.label}>Seu número com DDD</label>
+          <label style={S.label}>Seu número de WhatsApp com DDD</label>
           <input style={S.input} type="tel" placeholder="(98) 99999-9999"
             value={phone} onChange={e => { setPhone(fmt(e.target.value)); setError(''); }} />
           {error && <p style={{ color: '#ff6b6b', fontSize: '13px', lineHeight: '1.5' }}>{error}</p>}
-          <button style={S.btnPrimary} onClick={send}>Enviar código SMS 📲</button>
+          <button style={S.btnPrimary} onClick={send}>
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              Enviar código via WhatsApp
+            </span>
+          </button>
         </>
       )}
       {step === 'code' && (
         <>
           <div style={{ background: 'rgba(37,211,102,0.1)', border: '1px solid rgba(37,211,102,0.3)', borderRadius: '12px', padding: '14px', marginBottom: '20px', fontSize: '13px', textAlign: 'center' }}>
-            ✅ Código enviado para <strong>{phone}</strong>
+            ✅ Código enviado via <strong>WhatsApp</strong> para <strong>{phone}</strong>
           </div>
           <label style={S.label}>Código de 6 dígitos</label>
           <input style={S.inputOtp} type="number" placeholder="000000"
@@ -621,6 +631,22 @@ export default function ImoveisDashboard() {
   const [screen, setScreen] = useState(SCREENS.LANDING);
   const [user, setUser]     = useState(null);
 
+  const handleVerified = async (phone) => {
+    const updatedUser = { ...user, phone };
+    setUser(updatedUser);
+    setScreen(SCREENS.DASHBOARD);
+    try {
+      await setDoc(doc(db, 'leads', user.uid), {
+        name:       updatedUser.name,
+        email:      updatedUser.email,
+        phone,
+        verifiedAt: serverTimestamp(),
+      }, { merge: true });
+    } catch (e) {
+      console.error('Erro ao salvar lead:', e);
+    }
+  };
+
   return (
     <>
       <style>{`
@@ -633,7 +659,7 @@ export default function ImoveisDashboard() {
       <div style={S.root}>
         {screen === SCREENS.LANDING   && <LandingScreen onContinue={() => setScreen(SCREENS.AUTH)} />}
         {screen === SCREENS.AUTH      && <AuthScreen onLogin={u => { setUser(u); setScreen(SCREENS.VERIFY); }} />}
-        {screen === SCREENS.VERIFY    && <VerifyScreen onVerified={phone => { setUser(u => ({ ...u, phone })); setScreen(SCREENS.DASHBOARD); }} />}
+        {screen === SCREENS.VERIFY    && <VerifyScreen onVerified={handleVerified} />}
         {screen === SCREENS.DASHBOARD && <DashboardScreen user={user} />}
       </div>
     </>
