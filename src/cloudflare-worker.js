@@ -82,7 +82,7 @@ export default {
         {
           method:  'POST',
           headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-          body:    `To=${encodeURIComponent(phone)}&Channel=whatsapp`,
+          body:    `To=${encodeURIComponent(phone)}&Channel=sms`,
         }
       );
       const data = await res.json();
