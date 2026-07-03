@@ -3,6 +3,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   OAuthProvider,
+  onAuthStateChanged,
 } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -650,12 +651,44 @@ function DashboardScreen({ user }) {
 
 // ─── APP PRINCIPAL ───────────────────────────────────────────
 export default function ImoveisDashboard() {
-  const [screen, setScreen] = useState(SCREENS.LANDING);
+  const [screen, setScreen] = useState(null); // null = verificando sessão
   const [user, setUser]     = useState(null);
+
+  // Restaura sessão ao recarregar — Firebase persiste auth, localStorage persiste OTP
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        const base = {
+          uid:   firebaseUser.uid,
+          name:  firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+          email: firebaseUser.email,
+          photo: firebaseUser.photoURL,
+        };
+        try {
+          const saved = localStorage.getItem('metro_verified');
+          if (saved) {
+            const session = JSON.parse(saved);
+            if (session.uid === firebaseUser.uid) {
+              setUser({ ...base, phone: session.phone });
+              setScreen(SCREENS.DASHBOARD);
+              return;
+            }
+          }
+        } catch {}
+        // Autenticado mas OTP não verificado — pula landing e login
+        setUser(base);
+        setScreen(SCREENS.VERIFY);
+      } else {
+        setScreen(SCREENS.LANDING);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   const handleVerified = async (phone) => {
     const updatedUser = { ...user, phone };
     setUser(updatedUser);
+    localStorage.setItem('metro_verified', JSON.stringify({ uid: user.uid, phone }));
     setScreen(SCREENS.DASHBOARD);
     try {
       await setDoc(doc(db, 'leads', user.uid), {
@@ -669,15 +702,27 @@ export default function ImoveisDashboard() {
     }
   };
 
+  const globalStyle = `
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    input::placeholder { color: rgba(255,255,255,0.3); }
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    body { background: #0d1b2a; }
+  `;
+
+  // Verificando sessão — evita flash da tela inicial
+  if (screen === null) {
+    return (
+      <>
+        <style>{globalStyle}</style>
+        <div style={S.root}><div style={S.card}><Spinner text="Carregando..." /></div></div>
+      </>
+    );
+  }
+
   return (
     <>
-      <style>{`
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        input::placeholder { color: rgba(255,255,255,0.3); }
-        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
-        body { background: #0d1b2a; }
-      `}</style>
+      <style>{globalStyle}</style>
       <div style={S.root}>
         {screen === SCREENS.LANDING   && <LandingScreen onContinue={() => setScreen(SCREENS.AUTH)} />}
         {screen === SCREENS.AUTH      && <AuthScreen onLogin={u => { setUser(u); setScreen(SCREENS.VERIFY); }} />}
