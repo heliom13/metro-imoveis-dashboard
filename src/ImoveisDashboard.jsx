@@ -552,7 +552,17 @@ function DashboardScreen({ user }) {
                             <span style={{ fontSize: '11px', fontWeight: '600', color: '#25d366' }}>📍 {prop.distanceKm}km</span>
                           </div>
                           <div style={S.propertyName}>{prop.name}</div>
-                          <div style={S.propertyAddr}>{prop.address}</div>
+                          {prop.bairro && (
+                            <div style={{ fontSize: '12px', fontWeight: '600', color, marginBottom: '3px' }}>
+                              🏘️ {prop.bairro}
+                            </div>
+                          )}
+                          <div style={S.propertyAddr}>{prop.rua || prop.address}</div>
+                          {prop.cidade && (
+                            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginTop: '2px' }}>
+                              {prop.cidade}{prop.cep ? ` — CEP ${prop.cep}` : ''}
+                            </div>
+                          )}
                           <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginTop: '4px' }}>
                             {isSel ? '▲ Fechar detalhes' : 'Toque para ver opções →'}
                           </div>
@@ -573,7 +583,19 @@ function DashboardScreen({ user }) {
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>{selected.name}</div>
-                      <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginBottom: '6px' }}>📍 {selected.address}</div>
+                      {selected.bairro && (
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: categoryColor(selected.category), marginBottom: '3px' }}>
+                          🏘️ {selected.bairro}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginBottom: '2px' }}>
+                        📍 {selected.rua || selected.address}
+                      </div>
+                      {selected.cidade && (
+                        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginBottom: '6px' }}>
+                          {selected.cidade}{selected.cep ? ` — CEP ${selected.cep}` : ''}
+                        </div>
+                      )}
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', background: categoryColor(selected.category) + '33', color: categoryColor(selected.category) }}>
                           {selected.category}

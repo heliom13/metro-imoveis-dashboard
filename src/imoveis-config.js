@@ -2,7 +2,7 @@
 // Após implantar o GoogleSheetsScript.gs como Web App, cole a URL abaixo.
 // Exemplo: "https://script.google.com/macros/s/AKfycbxXXXXXXXXX/exec"
 
-export const SHEETS_API_URL = 'COLE_AQUI_A_URL_DO_APPS_SCRIPT';
+export const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbwaDGIohWKI9f4NPygHMTMYKOs-znhEKSnLSgnNBuU0LMj4QvIBLUVstVFBXejROqeYsQ/exec';
 
 // URL do Cloudflare Worker para OTP — cole após o deploy
 export const OTP_API_URL = 'https://metro-otp.helioncorrea13.workers.dev';
